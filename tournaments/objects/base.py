@@ -2172,13 +2172,17 @@ class Tournament:
             )
         if self.checkin_stop:
             duration = (self.checkin_stop - datetime.now(self.tz)).total_seconds()
-            duration //= 60  # number of minutes
-            if duration >= 10:
-                self.checkin_reminders.append((5, False))
-            if duration >= 20:
-                self.checkin_reminders.append((10, True))
-            if duration >= 40:
-                self.checkin_reminders.append((15, False))
+            if duration < 60:
+                # don't start the check-in only to end it within a minute
+                self.ignored_events.append("checkin_stop")
+            else:
+                duration //= 60  # number of minutes
+                if duration >= 10:
+                    self.checkin_reminders.append((5, False))
+                if duration >= 20:
+                    self.checkin_reminders.append((10, True))
+                if duration >= 40:
+                    self.checkin_reminders.append((15, False))
         await self.save()
 
     async def call_check_in(self, with_dm: bool = False):
@@ -2317,8 +2321,8 @@ class Tournament:
             raise RuntimeError("Limit reached.")
         await member.add_roles(self.participant_role, reason=_("Registering to tournament."))
         participant = self.participant_object(member, self)
-        if self.checkin_phase != "pending":
-            # registering during check-in, count as already checked
+        if self.checkin_phase == "ongoing" or self.checkin_phase == "done":
+            # registering during or after check-in, count as already checked
             participant.checked_in = True
         if not (self.ranking["league_name"] and self.ranking["league_id"]) or (
             self.participants and self.participants[-1].player_id is not None

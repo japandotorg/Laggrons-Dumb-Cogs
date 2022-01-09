@@ -834,6 +834,7 @@ class API:
         reason: Optional[str] = None,
         time: Optional[timedelta] = None,
         date: Optional[datetime] = None,
+        ban_days: Optional[int] = None,
         log_modlog: Optional[bool] = True,
         log_dm: Optional[bool] = True,
         take_action: Optional[bool] = True,
@@ -876,6 +877,9 @@ class API:
             The time before cancelling the action. This only works for a mute or a ban.
         date: Optional[datetime]
             When the action was taken. Only use if you want to overwrite the current date and time.
+        ban_days: Optional[int]
+            Overwrite number of days of messages to delete for a ban. Only used for warnings
+            level 4 or 5. If this is omitted, the bot will fall back to the user defined setting.
         log_modlog: Optional[bool]
             Specify if an embed should be posted to the modlog channel. Default to :py:obj:`True`.
         log_dm: Optional[bool]
@@ -1012,7 +1016,8 @@ class API:
                         await guild.ban(
                             member,
                             reason=audit_reason,
-                            delete_message_days=await self.data.guild(guild).bandays.softban(),
+                            delete_message_days=ban_days
+                            or await self.data.guild(guild).bandays.softban(),
                         )
                         await guild.unban(
                             member,
@@ -1024,7 +1029,8 @@ class API:
                         await guild.ban(
                             member,
                             reason=audit_reason,
-                            delete_message_days=await self.data.guild(guild).bandays.ban(),
+                            delete_message_days=ban_days
+                            or await self.data.guild(guild).bandays.ban(),
                         )
                 except discord.errors.HTTPException as e:
                     log.warn(
@@ -1297,20 +1303,25 @@ class API:
         if hasattr(self, "automod_warn_task"):
             self.automod_warn_task.cancel()
 
-    async def automod_on_message(self, message: discord.Message):
+    async def _check_if_automod_valid(self, message: discord.Message):
         guild = message.guild
         member = message.author
         if not guild:
-            return
+            return False
         if member.bot:
-            return
+            return False
         if guild.owner_id == member.id:
-            return
+            return False
         if not self.cache.is_automod_enabled(guild):
-            return
+            return False
         if await self.bot.is_automod_immune(message):
-            return
+            return False
         if await self.bot.is_mod(member):
+            return False
+        return True
+
+    async def automod_on_message(self, message: discord.Message):
+        if not await self._check_if_automod_valid(message):
             return
         # we run all tasks concurrently
         # results are returned in the same order (either None or an exception)
@@ -1328,6 +1339,18 @@ class API:
             log.error(
                 f"[Guild {message.guild.id}] Error while processing message for antispam system.",
                 exc_info=antispam_exception,
+            )
+
+    async def automod_on_message_edit(self, before: discord.Message, after: discord.Message):
+        if not await self._check_if_automod_valid(after):
+            return
+        try:
+            await self.automod_process_regex(after)
+        except Exception as e:
+            log.error(
+                f"[Guild {after.guild.id}] Error while "
+                "processing edited message for regex automod.",
+                exc_info=e,
             )
 
     async def _safe_regex_search(self, regex: re.Pattern, message: discord.Message):
@@ -1415,6 +1438,9 @@ class API:
         antispam_data = await self.cache.get_automod_antispam(guild)
         if antispam_data is False:
             return
+        for word in antispam_data["whitelist"]:
+            if word in message.content:
+                return
 
         # we slowly go across each key, if it doesn't exist, data is created then the
         # function ends since there's no data to check
