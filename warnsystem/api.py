@@ -7,7 +7,7 @@ import functools
 from copy import deepcopy
 from collections import namedtuple
 from typing import Union, Optional, Iterable, Callable, Awaitable
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from multiprocessing import TimeoutError
 from multiprocessing.pool import Pool
 
@@ -58,6 +58,10 @@ class FakeRole:
     colour = discord.Embed.Empty
 
 
+class FakeAsset:
+    url = ""
+
+
 class UnavailableMember(discord.abc.User, discord.abc.Messageable):
     """
     A class that reproduces the behaviour of a discord.Member instance, except
@@ -70,6 +74,7 @@ class UnavailableMember(discord.abc.User, discord.abc.Messageable):
         self._state = state
         self.id = user_id
         self.top_role = FakeRole()
+        self.avatar = FakeAsset()
 
     @classmethod
     def _check_id(cls, member_id):
@@ -107,10 +112,6 @@ class UnavailableMember(discord.abc.User, discord.abc.Messageable):
     @property
     def mention(self):
         return f"<@{self.id}>"
-
-    @property
-    def avatar_url(self):
-        return ""
 
     def __str__(self):
         return "Unknown#0000"
@@ -453,13 +454,149 @@ class API:
         ~warnsystem.errors.NotFound
             The case requested doesn't exist.
         """
+
+        async def edit_message(channel_id: int, message_id: int, new_reason: str):
+            channel: discord.TextChannel = guild.get_channel(channel_id)
+            if channel is None:
+                log.warn(
+                    f"[Guild {guild.id}] Failed to edit modlog message. "
+                    f"Channel {channel_id} not found."
+                )
+                return False
+            try:
+                message: discord.Message = await channel.fetch_message(message_id)
+            except discord.errors.NotFound:
+                log.warn(
+                    f"[Guild {guild.id}] Failed to edit modlog message. "
+                    f"Message {message_id} in channel {channel.id} not found."
+                )
+                return False
+            except discord.errors.Forbidden:
+                log.warn(
+                    f"[Guild {guild.id}] Failed to edit modlog message. "
+                    f"No permissions to fetch messages in channel {channel.id}."
+                )
+                return False
+            except discord.errors.HTTPException as e:
+                log.error(
+                    f"[Guild {guild.id}] Failed to edit modlog message. API exception raised.",
+                    exc_info=e,
+                )
+                return False
+            try:
+                embed: discord.Embed = message.embeds[0]
+                embed.set_field_at(
+                    len(embed.fields) - 2, name=_("Reason"), value=new_reason, inline=False
+                )
+            except IndexError as e:
+                log.error(
+                    f"[Guild {guild.id}] Failed to edit modlog message. Embed is malformed.",
+                    exc_info=e,
+                )
+                return False
+            try:
+                await message.edit(embed=embed)
+            except discord.errors.HTTPException as e:
+                log.error(
+                    f"[Guild {guild.id}] Failed to edit modlog message. "
+                    "Unknown error when attempting message edition.",
+                    exc_info=e,
+                )
+                return False
+            return True
+
         if len(new_reason) > 1024:
             raise errors.BadArgument("The reason must not be above 1024 characters.")
         case = await self.get_case(guild, user, index)
         case["reason"] = new_reason
         case["time"] = int(case["time"].timestamp())
+        try:
+            channel_id, message_id = case["modlog_message"].values()
+        except KeyError:
+            pass
+        else:
+            await edit_message(channel_id, message_id, new_reason)
         async with self.data.custom("MODLOGS", guild.id, user.id).x() as logs:
             logs[index - 1] = case
+        log.debug(
+            f"[Guild {guild.id}] Edited case #{index} from member {user} (ID: {user.id}). "
+            f"New reason: {new_reason}"
+        )
+        return True
+
+    async def delete_case(
+        self,
+        guild: discord.Guild,
+        user: Union[discord.Member, UnavailableMember],
+        index: int,
+    ):
+        async def delete_message(channel_id: int, message_id: int):
+            channel: discord.TextChannel = guild.get_channel(channel_id)
+            if channel is None:
+                log.warn(
+                    f"[Guild {guild.id}] Failed to delete modlog message. "
+                    f"Channel {channel_id} not found."
+                )
+                return False
+            try:
+                message: discord.Message = await channel.fetch_message(message_id)
+            except discord.errors.NotFound:
+                log.warn(
+                    f"[Guild {guild.id}] Failed to delete modlog message. "
+                    f"Message {message_id} in channel {channel.id} not found."
+                )
+                return False
+            except discord.errors.Forbidden:
+                log.warn(
+                    f"[Guild {guild.id}] Failed to delete modlog message. "
+                    f"No permissions to fetch messages in channel {channel.id}."
+                )
+                return False
+            except discord.errors.HTTPException as e:
+                log.error(
+                    f"[Guild {guild.id}] Failed to delete modlog message. API exception raised.",
+                    exc_info=e,
+                )
+                return False
+            try:
+                await message.delete()
+            except discord.errors.HTTPException as e:
+                log.error(
+                    f"[Guild {guild.id}] Failed to delete modlog message. "
+                    "Unknown error when attempting message deletion.",
+                    exc_info=e,
+                )
+                return False
+            return True
+
+        case = await self.get_case(guild, user, index)
+        can_unmute = False
+        add_roles = False
+        if case["level"] == 2:
+            mute_role = guild.get_role(await self.cache.get_mute_role(guild))
+            member = guild.get_member(self.user)
+            if member:
+                if mute_role and mute_role in member.roles:
+                    can_unmute = True
+                add_roles = await self.ws.data.guild(guild).remove_roles()
+        if can_unmute:
+            await member.remove_roles(mute_role, reason=_("Warning deleted."))
+        async with self.data.custom("MODLOGS", guild.id, user.id).x() as logs:
+            try:
+                roles = logs[index - 1]["roles"]
+            except KeyError:
+                roles = []
+            try:
+                channel_id, message_id = logs[index - 1]["modlog_message"].values()
+            except KeyError:
+                pass
+            else:
+                await delete_message(channel_id, message_id)
+            logs.remove(logs[index - 1])
+        if add_roles and roles:
+            roles = [guild.get_role(x) for x in roles]
+            await member.add_roles(*roles, reason=_("Adding removed roles back after unmute."))
+        log.debug(f"[Guild {guild.id}] Removed case #{index} from member {user} (ID: {user.id}).")
         return True
 
     async def get_modlog_channel(
@@ -637,7 +774,7 @@ class API:
         if date:
             today = date.strftime("%a %d %B %Y %H:%M")
         else:
-            today = datetime.utcnow()
+            today = datetime.now(timezone.utc)
         if time:
             duration = self._format_timedelta(time)
         else:
@@ -662,7 +799,7 @@ class API:
 
         # embed for the modlog
         log_embed = discord.Embed()
-        log_embed.set_author(name=f"{member.name} | {member.id}", icon_url=member.avatar_url)
+        log_embed.set_author(name=f"{member.name} | {member.id}", icon_url=member.avatar.url)
         log_embed.title = _("Level {level} warning ({action})").format(
             level=level, action=action[0]
         )
@@ -1122,7 +1259,7 @@ class API:
             else:
                 audit_reason += _("Reason too long to be shown.")
         if not date:
-            date = datetime.utcnow()
+            date = datetime.now(timezone.utc)
 
         i = 0
         fails = [await warn_member(x, audit_reason) for x in members if x]
@@ -1171,7 +1308,7 @@ class API:
                         f"(ID: {member.id}) after its temporary ban."
                     )
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         for guild in self.bot.guilds:
             data = await self.cache.get_temp_action(guild)
             if not data:
@@ -1590,7 +1727,7 @@ class API:
             # we increase this value until reaching the given limit
             time = autowarn["time"]
             if time:
-                until = datetime.utcnow() - timedelta(seconds=time)
+                until = datetime.now(timezone.utc) - timedelta(seconds=time)
                 autowarns[i]["until"] = until
         del time
         found_warnings = {}  # we fill this list with the valid autowarns, there can be more than 1
