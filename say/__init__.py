@@ -39,9 +39,10 @@ async def setup(bot: "Red"):
 async def _setup(bot: "Red"):
     if bot.user:
         assert isinstance(bot.tree, app_commands.CommandTree)
-        log.debug("Added slash command /say, syncing...")
-        await bot.tree.sync(guild=None)
-        log.debug("Slash commands now synced...")
+        if bot.tree.client.application_id:
+            log.debug("Added slash command /say, syncing...")
+            await bot.tree.sync(guild=None)
+            log.debug("Slash commands now synced...")
 
 
 def teardown(bot: "Red"):
