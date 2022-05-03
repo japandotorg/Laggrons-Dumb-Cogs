@@ -71,8 +71,8 @@ class InstantCommands(BaseCog):
         # resume all commands and listeners
         bot.loop.create_task(self.resume_commands())
 
-    __author__ = ["retke (El Laggron)"]
-    __version__ = "1.3.1"
+    __author__ = ["retke (El Laggron)", "japandotorg"]
+    __version__ = "1.3.2"
 
     # def get_config_identifier(self, name):
     # """
@@ -542,10 +542,10 @@ takes the context as its sole parameter.
             )
 
     # correctly unload the cog
-    def __unload(self):
-        self.cog_unload()
+    async def __unload(self):
+        await self.cog_unload()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         log.debug("Unloading cog...")
 
         async def unload():

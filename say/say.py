@@ -32,8 +32,8 @@ class Say(commands.Cog):
         self.bot = bot
         self.interaction = []
 
-    __author__ = ["retke (El Laggron)"]
-    __version__ = "2.0.0"
+    __author__ = ["retke (El Laggron)", "japandotorg"]
+    __version__ = "2.0.1"
 
     async def say(
         self,
@@ -369,10 +369,10 @@ class Say(commands.Cog):
         self.interaction.remove(user)
         await user.send(_("Session closed"))
 
-    def __unload(self):
+    async def __unload(self):
         self.cog_unload()
 
-    def cog_unload(self):
+    async def cog_unload(self):
         log.debug("Unloading cog...")
         for user in self.interaction:
             self.bot.loop.create_task(self.stop_interaction(user))

@@ -31,7 +31,7 @@ async def setup(bot: "Red"):
     except AttributeError:
         raise CogLoadError("This cog requires the latest discord.py 2.0.0a.") from None
     n = Say(bot)
-    bot.add_cog(n)
+    await bot.add_cog(n)
     asyncio.create_task(_setup(bot))
     log.debug("Cog successfully loaded on the instance.")
 

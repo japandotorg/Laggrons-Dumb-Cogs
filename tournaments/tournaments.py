@@ -156,8 +156,8 @@ class Tournaments(
         except Exception as e:
             log.error("Couldn't load dev env values.", exc_info=e)
 
-    __version__ = "1.1.15"
-    __author__ = ["retke (El Laggron)", "Wonderfall", "Xyleff"]
+    __version__ = "1.1.16"
+    __author__ = ["retke (El Laggron)", "Wonderfall", "Xyleff", "japandotorg"]
 
     @commands.command(hidden=True)
     async def tournamentsinfo(self, ctx: commands.Context):

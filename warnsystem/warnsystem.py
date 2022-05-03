@@ -174,8 +174,8 @@ class WarnSystem(SettingsMixin, AutomodMixin, BaseCog, metaclass=CompositeMetaCl
 
         self.task: asyncio.Task
 
-    __version__ = "1.5.0"
-    __author__ = ["retke (El Laggron)"]
+    __version__ = "1.5.1"
+    __author__ = ["retke (El Laggron)", "japandotorg"]
 
     # helpers
     async def call_warn(self, ctx, level, member, reason=None, time=None, ban_days=None):

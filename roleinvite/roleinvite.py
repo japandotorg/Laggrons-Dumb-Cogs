@@ -65,8 +65,8 @@ class RoleInvite(BaseCog):
 
         bot.loop.create_task(self.api.update_invites())
 
-    __author__ = ["retke (El Laggron)"]
-    __version__ = "2.0.3"
+    __author__ = ["retke (El Laggron)", "japandotorg"]
+    __version__ = "2.0.4"
 
     async def _check(self, ctx: commands.Context):
         """
@@ -535,9 +535,9 @@ class RoleInvite(BaseCog):
                 exc_info=error.original,
             )
 
-    def __unload(self):
+    async def __unload(self):
         # breaking change __unload -> cog_unload
-        self.cog_unload()
+        await self.cog_unload()
 
     def cog_unload(self):
         log.debug("Unloading cog...")
