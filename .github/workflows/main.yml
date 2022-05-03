@@ -1,0 +1,78 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile:
+    name: Compile
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python_version:
+          - 3.8
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ env.ref }}
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python_version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install Red-DiscordBot
+          python -m pip install git+https://github.com/retke/laggron-utils
+          python -m pip install python-dateutil==2.8.1
+      - name: Compile all
+        run: |
+          make compile
+  style:
+    name: Style check
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python_version:
+          - 3.8
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ env.ref }}
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python_version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install Red-DiscordBot
+          python -m pip install git+https://github.com/retke/laggron-utils
+          python -m pip install python-dateutil==2.8.1
+          python -m pip install black==20.8b1
+      - name: Checking style
+        run: |
+          make stylecheck
+  docs:
+    name: Sphinx documenation
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python_version:
+          - 3.8
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          ref: ${{ env.ref }}
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python_version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt
+      - name: Building docs
+        run: |
+          make test_docs
