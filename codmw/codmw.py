@@ -95,8 +95,8 @@ class CODMW(commands.Cog):
         self.bot = bot
         self.cod_client: Client = None
 
-    __author__ = ["retke (El Laggron)"]
-    __version__ = "1.0.2"
+    __author__ = ["retke (El Laggron)", "japandotorg"]
+    __version__ = "1.0.3"
 
     @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
